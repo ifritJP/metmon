@@ -1,0 +1,5 @@
+release
+Makefile.local
+*~
+.web-extension-id
+web-ext-artifacts
