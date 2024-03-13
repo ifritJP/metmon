@@ -44,6 +44,68 @@ async function retryDownload( url, retryCount ) {
 }
 
 
+function downloadFromList( max, list, progressFunc ) {
+
+    let promise = new Promise( (resolve, reject)=>{
+        let url2blob = new Map();
+        // エラーのリトライ回数
+        const maxRetry = 3;
+
+        // 平行処理中の数
+        let count = 0;
+
+        const remain = list.slice();
+
+
+        function reqNext() {
+            if ( remain.length > 0 ) {
+                count++;
+                req( remain.shift(), 0 );
+            }
+        }
+        
+        function req( url, retryCount ) {
+            if ( retryCount < maxRetry ) {
+                retryCount++;
+                fetch( url ).then((resp)=>{
+                    if ( resp.status != 200 ) {
+                        console.log( `retry -- ${retryCount}:${url}` );
+                        req( url, retryCount );
+                    } else {
+                        onDownload( url, resp );
+                    }
+                });
+            } else {
+                reject( `over retry -- ${url}` );
+            }
+        }
+
+        let progress = 0;
+        function onDownload( url, resp ) {
+            resp.blob().then( (blob)=>{
+                count--;
+                reqNext();
+                progress++;
+                url2blob.set( url, blob );
+
+                if ( !progressFunc( url2blob ) ) {
+                    resolve( false );
+                } else {
+                    if ( progress == list.length ) {
+                        resolve( true );
+                    }
+                }
+            });
+        }
+
+        while ( remain.length > 0 && count < max ) {
+            reqNext();
+        }
+    });
+    return promise;
+}
+
+
 async function downloadAndJoin( urlList, progressFunc ) {
     let date_txt;    
 
@@ -82,19 +144,30 @@ async function downloadAndJoin( urlList, progressFunc ) {
 
     let cancelFlag = false;
 
-    for ( let index = 0; index < urlList.length; index++ ) {
-        const partUrl = urlList[ index ];
+    const max_div_el = document.getElementById( "max_div" );
+    const max_div = parseInt( max_div_el.value );
 
-        let resp = await retryDownload( partUrl, 3 );
-        let blob = await resp.blob();
-        await writer.write( blob );
 
-        
-        if ( !progressFunc( index ) ) {
-            cancelFlag = true;
-            break;
+    let index = 0;
+    let count = 0;
+    cancelFlag = ! (await downloadFromList( max_div, urlList, (url2blob)=>{
+        count++;
+        if ( !progressFunc( count ) ) {
+            return false;
         }
-    }
+
+        while ( index < urlList.length ) {
+            let url = urlList[ index ];
+            if ( url2blob.has( url ) ) {
+                index++;
+                writer.write( url2blob.get( url ) );
+            } else {
+                break;
+            }
+        }
+        return true;
+    }));
+    
     await writer.close();
     
     if ( !cancelFlag ) {

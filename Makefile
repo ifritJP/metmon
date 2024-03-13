@@ -4,8 +4,10 @@ ADB_PATH=
 ADB_IP=
 ADB_PORT=
 RELEASE_DIR=../ifritJP.github.io/files
+CHANNEL=unlisted
 
-FIREFOX_PACK=org.mozilla.fenix
+#FIREFOX_PACK=org.mozilla.fenix
+FIREFOX_PACK=org.mozilla.firefox
 
 ifneq "$(wildcard Makefile.local)" ""
 include Makefile.local
@@ -19,6 +21,7 @@ endif
 all:
 	@echo make run-ext
 	@echo make sign
+	@echo make sign-channel
 	@echo make run-ext-adb ADB_IP=***.***.***.*** ADB_PORT=xxxx
 	@echo make adb-pair ADB_IP=***.***.***.*** ADB_PORT=xxxx
 	@echo make adb-connect ADB_IP=***.***.***.*** ADB_PORT=xxxx
@@ -28,14 +31,24 @@ run-ext:
 	web-ext run -s src --devtools --keep-profile-changes		\
 		-p ~/.cache/mozilla/firefox/web-ext/ --profile-create-if-missing
 
+build:
+	web-ext build -s src -o \
+		$(EXT_ID_OP)				\
+		-i Makefile.local -i ".git" -i '*~'	\
+		-i 'src/*~'				\
+		-i 'src/options/*~'
+
 sign:
 	web-ext sign -s src --api-key=$(JWT_ISSUER)		\
 		--api-secret=$(JWT_SECRET)		\
 		$(EXT_ID_OP)				\
-		--channel "unlisted"			\
+		--channel $(CHANNEL)			\
 		-i Makefile.local -i ".git" -i '*~'	\
 		-i 'src/*~'				\
 		-i 'src/options/*~'
+
+sign-channel:
+	$(MAKE) sign CHANNEL="listed"
 
 adb-kill:
 	${ADB_PATH} kill-server

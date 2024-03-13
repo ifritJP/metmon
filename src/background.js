@@ -1,8 +1,10 @@
 "use strict";
 
 import * as FS from "./fs.js";
+import * as Def from "./def.js";
 
 let s_optionTabId = -1;
+
 
 const s_kind2ContentTypeSet = {
     image: new Set( [
@@ -101,7 +103,7 @@ function onBeforeRequest( detail ) {
     filter.ondata = (event) => {
         filter.write( event.data );
         info.length += event.data.byteLength;
-        if ( info.length < 200 * 1024 ) {
+        if ( info.length < Def.limitSize ) {
             info.dataList.push( event.data );
         } else {
             info.dataList = null;

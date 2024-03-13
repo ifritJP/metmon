@@ -1,6 +1,8 @@
 "use strict";
 
 import * as DL from "./download.js";
+import * as Def from "./def.js";
+
 
 const kind2filter = {};
 
@@ -148,7 +150,7 @@ window.addEventListener(
                 }
             },
             {
-                label: "<div class='menu-item'>view this</div>",
+                label: `<div class='menu-item'>view this(limit ${Def.limitSize/1024}KB)</div>`,
                 action: (e,row)=>{
                     viewItem( row.getData() );
                 }
@@ -330,4 +332,20 @@ window.addEventListener(
                     redrawTable();
                 });
         }
+
+        async function setupSetting() {
+            const info = await browser.storage.local.get( null );
+            const max_div_el = document.getElementById( "max_div" );
+            const max_div_num_el = document.getElementById( "max_div_num" );
+            if ( info && info.setting ) {
+                max_div_el.value = info.setting.max_div;
+                max_div_num_el.innerHTML = `${max_div_el.value}`;
+            }
+            max_div_el.addEventListener(
+                "input",
+                ()=>{
+                    max_div_num_el.innerHTML = `${max_div_el.value}`;
+                });
+        }
+        setupSetting();
     });
