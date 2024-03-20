@@ -64,19 +64,31 @@ function contentType2Kind( contentType ) {
     return "etc";
 }
 
+browser.runtime.onMessage.addListener( (msg, sender, sendResponse) => {
+    if ( msg.type == "onview" ) {
+        s_optionTabId = msg.info;
+        registerListener();
+    }
+    else if ( msg.type == "capture" ) {
+        if ( msg.info ) {
+            registerListener();
+        } else {
+            removeListener();
+        }
+    }
+});
+
 
 browser.browserAction.onClicked.addListener( async () => {
     try {
         await browser.runtime.sendMessage( { type: "init" } );
     } catch (err) {
-        registerListener();
         let activeTab = (await browser.tabs.query({active: true, currentWindow: true}))[0];
         let createdTab = await browser.tabs.create(
             {
                 url: `./options.html?tabid=${activeTab.id}`
             }
         );
-        s_optionTabId = createdTab.id;
 
         browser.tabs.onRemoved.addListener( (tabId, removeInfo)=>{
             if ( tabId == s_optionTabId ) {
@@ -160,11 +172,11 @@ function sendReqInfo( info, type ) {
     }
     if ( info.responseHeaders ) {
         info.responseHeaders.forEach( (header)=>{
-            if ( header[ "name" ] == "content-type" ) {
+            if ( header[ "name" ].toLowerCase() == "content-type" ) {
                 msg.content_type = header[ "value" ];
             }
         });
-        msg.kind = contentType2Kind( msg.content_type );
+        msg.kind = contentType2Kind( msg.content_type.toLowerCase() );
     }
 
     browser.runtime.sendMessage( {
@@ -191,7 +203,7 @@ function registerListener() {
     browser.webRequest.onBeforeRequest.addListener(
         onBeforeRequest,
         {
-            urls: [ "https://*/*" ],
+            urls: [ "*://*/*" ],
         },
         [ "blocking" ]
     );
@@ -199,7 +211,7 @@ function registerListener() {
     browser.webRequest.onBeforeSendHeaders.addListener(
         reqSend,
         {
-            urls: [ "https://*/*" ],
+            urls: [ "*://*/*" ],
         },
         ["blocking", "requestHeaders"],
     );
@@ -207,7 +219,7 @@ function registerListener() {
     browser.webRequest.onResponseStarted.addListener(
         reqStart,
         {
-            urls: [ "https://*/*" ],
+            urls: [ "*://*/*" ],
         },
         [ "responseHeaders" ]
     );
@@ -215,14 +227,14 @@ function registerListener() {
     browser.webRequest.onCompleted.addListener(
         reqEnd,
         {
-            urls: [ "https://*/*" ],
+            urls: [ "*://*/*" ],
         }
     );
 
     browser.webRequest.onErrorOccurred.addListener(
         reqErr,
         {
-            urls: [ "https://*/*" ],
+            urls: [ "*://*/*" ],
         }
     );
 }

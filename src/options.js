@@ -23,22 +23,39 @@ function dispRow( table, rowList, filterTabId ) {
     table.addData( work );
 }
 
+function updateKind( row ) {
+    if ( row.kind == "etc" && row.content_type == "" ) {
+        let newKind = row.kind;
+        const txt = getTxtFromInfo( row, 100 );
+        if ( txt.startsWith( "#EXTM3U" ) ) {
+            newKind = "media";
+        }
+        if ( newKind != row.kind ) {
+            row.kind = newKind;
+            return true;
+        }
+    }
+    return false;
+}
+
 function addRow( stockInfo, stockInfo2, table, info, filterTabId ) {
     const row = {
         tabId: info.tabId,
         id: info.id,
         code: info.code,
         url: info.url,
+        method: info.method,
         content_type: info.content_type,
         kind: info.kind,
         size: info.length,
         info: info,
     };
     if ( stockInfo.has( info.id ) ) {
-        row.size = stockInfo.get( info.id ).length;
-        row.b64List = stockInfo.get( info.id ).b64List;
-        
+        const stock = stockInfo.get( info.id );
         stockInfo.delete( info.id );
+        row.size = stock.length;
+        row.b64List = stock.b64List;
+        updateKind( row );
     }
     if ( stockInfo2.has( info.id ) ) {
         row.reqHeader = stockInfo2.get( info.id ).reqHeader;
@@ -57,15 +74,27 @@ async function init() {
     init();
 }
 
-function getTxtFromInfo( info ) {
+function getTxtFromInfo( info, max ) {
     let textlist = [];
+    let len = 0;
     if ( info.b64List ) {
-        textlist = info.b64List.map( (X)=>atob(X));
+        for ( const b64 of info.b64List ) {
+            let str = atob( b64 );
+            textlist.push( str );
+            len += str.length;
+            if ( max && len >= max ) {
+                break;
+            }
+        }
     }
     return `${textlist.join("")}`;
 }
 
-
+async function updateRow( row ) {
+    let work = {};
+    work[ `log_${row.id}` ] = row;
+    await browser.storage.session.set( work );
+}
 
 window.addEventListener(
     "load",
@@ -98,7 +127,7 @@ window.addEventListener(
             if ( data.content_type == "application/vnd.apple.mpegurl" ) {
                 hlsFlag = true;
             } else if ( data.content_type == "" ) {
-                const txt = getTxtFromInfo( data ).substring( 0, 100 );
+                const txt = getTxtFromInfo( data, 100 );
                 if ( txt.startsWith( "#EXTM3U" ) ) {
                     hlsFlag = true;
                 }
@@ -167,6 +196,7 @@ window.addEventListener(
                 {title: "id", field: "id", widthGrow:1},
                 {title: "tabId", field: "tabId", widthGrow:1},
                 {title: "code", field: "code", widthGrow:1},
+                {title: "Method", field: "method", widthGrow:1},
                 {title: "URL", field: "url", widthGrow:10},
                 {title: "Content-Type", field: "content_type", widthGrow:2},
                 {title: "kind", field: "kind", widthGrow:1},
@@ -179,6 +209,7 @@ window.addEventListener(
             const detailTxt_el =
                   document.querySelector( "#network-log-detail textarea" );
             detailTxt_el.value = `URL: ${data.url}\n`;
+            detailTxt_el.value += `Method: ${data.method}\n`;
 
             function dumpHeaders( delimit, headerList ) {
                 detailTxt_el.value += delimit;
@@ -211,9 +242,10 @@ window.addEventListener(
             if ( msg.type == "init" ) {
                 sendResponse( true );
             } else if ( msg.type == "req" ) {
-                id2row.set(
-                    msg.info.id,
-                    addRow( stockInfo, stockInfo2, table, msg.info, filterTabId ) );
+                const row = addRow(
+                    stockInfo, stockInfo2, table, msg.info, filterTabId );
+                id2row.set( msg.info.id, row );
+                updateRow( row );
                 processReq( table, msg.info );
             } else if ( msg.type == "reqSend" ) {
                 processReq( table, msg.info );
@@ -226,6 +258,7 @@ window.addEventListener(
                             reqHeader: msg.info.reqHeader,
                         }] );
                     }
+                    updateRow( row );
                 } else {
                     // "req" より先に "respData" が来ることがあるので、
                     // その場合の対応。
@@ -243,12 +276,25 @@ window.addEventListener(
                     row.b64List = msg.info.b64List;
                     
                     if ( kind2filter[ row.kind ] ) {
-
                         table.updateData( [{
                             id:row.id,
                             size:msg.info.length,
                         }] );
                     }
+
+                    let oldKind = row.kind;
+                    if ( updateKind( row ) ) {
+                        // response データから kind を更新した時の処理
+                        if ( !kind2filter[ oldKind ] ) {
+                            dispRow( table, [ row ], filterTabId );
+                        } else {
+                            table.updateData( [{
+                                id:row.id,
+                                kind:row.kind
+                            }] );
+                        }
+                    }
+                    updateRow( row );
                 } else {
                     // "req" より先に "respData" が来ることがあるので、
                     // その場合の対応。
@@ -307,6 +353,30 @@ window.addEventListener(
                     kind2filter[ kind.replace( "kind-", "" ) ] = 
                         document.querySelector( "#" + kind ).checked;
                 });
+
+                async function readLog() {
+                    const logs = await browser.storage.session.get( null );
+                    const list = [];
+                    Object.keys( logs ).forEach(
+                        (key)=>{
+                            const row = logs[ key ];
+                            list.push( logs[ key ] );
+                            id2row.set( row.id, row );
+                        });
+                    list.sort( (row1,row2)=>{
+                        const num1 = parseInt( row1.id );
+                        const num2 = parseInt( row2.id );
+                        return num1 - num2;
+                    });
+                    dispRow( table, list, filterTabId );
+                    // table.addData( list );
+                }
+                readLog();
+
+                {
+                    const tab = browser.tabs.getCurrent();
+                    await browser.runtime.sendMessage( { type: "onview", info:tab.id } );
+                }
             }
             applyFilter();
 
@@ -348,4 +418,10 @@ window.addEventListener(
                 });
         }
         setupSetting();
+
+        document.getElementById( "capture" ).addEventListener(
+            "click",
+            function () {
+                browser.runtime.sendMessage( { type:"capture", info:this.checked } );
+            });
     });

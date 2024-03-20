@@ -20,6 +20,7 @@ endif
 
 all:
 	@echo make run-ext
+	@echo make build
 	@echo make sign
 	@echo make sign-channel
 	@echo make run-ext-adb ADB_IP=***.***.***.*** ADB_PORT=xxxx

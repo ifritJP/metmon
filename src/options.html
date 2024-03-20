@@ -27,9 +27,15 @@
     <input id="kind-etc" type="checkbox" checked>
     <label for="kind-etc">etc</label>
 
+    <div id="network-log-detail">
+      <textarea wrap="off" spellcheck="false"></textarea>
+    </div>
     <div>
     div: <span id="max_div_num">1</span>
       <input id="max_div" type="range" min="1" max="4" step="1" value="1" >
+
+    <input id="capture" type="checkbox" checked>
+    <label for="capture">capture</label>
     </div>
     
   </div>
@@ -41,9 +47,6 @@
   <div>
     <button id="clear-log">Clear Log</button>
     <button id="filter-clear">Clear Filter</button>
-  </div>
-  <div id="network-log-detail">
-    <textarea wrap="off" spellcheck="false"></textarea>
   </div>
   <div id="network-log"></div>
   <div class="text-viewer" hidden >

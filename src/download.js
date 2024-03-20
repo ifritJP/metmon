@@ -252,6 +252,9 @@ export async function downloadFromHls( title, url ) {
 
     // どの URL を処理するかユーザ選択
     if ( Object.keys( url2detail ).length != 0 ) {
+        while ( list_el.firstChild ) {
+            list_el.removeChild( list_el.firstChild );
+        }
         Object.keys( url2detail ).forEach( (stream_url)=>{
             let detail = url2detail[ stream_url ];
             let dummy_el = document.createElement( "div" );
