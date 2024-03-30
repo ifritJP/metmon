@@ -31,11 +31,14 @@
       <textarea wrap="off" spellcheck="false"></textarea>
     </div>
     <div>
+      <input id="capture" type="checkbox" checked>
+      <label for="capture">capture</label>
+      <button id="clear-log">Clear Log</button>
+      <button id="filter-clear">Clear Filter</button>
     div: <span id="max_div_num">1</span>
       <input id="max_div" type="range" min="1" max="4" step="1" value="1" >
-
-    <input id="capture" type="checkbox" checked>
-    <label for="capture">capture</label>
+    limit-size(KB): <input id="limit-size-num" value="200">
+      <input id="limit-size" type="range" min="100" max="10000" step="100" value="200" >
     </div>
     
   </div>
@@ -44,15 +47,12 @@
   <div id="progress">
   </div>
   
-  <div>
-    <button id="clear-log">Clear Log</button>
-    <button id="filter-clear">Clear Filter</button>
-  </div>
   <div id="network-log"></div>
-  <div class="text-viewer" hidden >
+  <div class="resource-viewer" hidden >
     <input type="button" value="close"> <br>
-    <textarea>
+    <textarea hidden>
     </textarea>
+    <img hidden>
   </div>
   <div class="stream-selector" hidden >
     <input type="button" value="cancel"> <br>

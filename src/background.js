@@ -4,6 +4,8 @@ import * as FS from "./fs.js";
 import * as Def from "./def.js";
 
 let s_optionTabId = -1;
+let s_limitSize = 200 * 1024;
+
 
 
 const s_kind2ContentTypeSet = {
@@ -68,13 +70,14 @@ browser.runtime.onMessage.addListener( (msg, sender, sendResponse) => {
     if ( msg.type == "onview" ) {
         s_optionTabId = msg.info;
         registerListener();
-    }
-    else if ( msg.type == "capture" ) {
+    } else if ( msg.type == "capture" ) {
         if ( msg.info ) {
             registerListener();
         } else {
             removeListener();
         }
+    } else if ( msg.type == "limit-size" ) {
+        s_limitSize = msg.info * 1024;
     }
 });
 
@@ -101,7 +104,7 @@ browser.browserAction.onClicked.addListener( async () => {
 });
 
 function onBeforeRequest( detail ) {
-    if ( s_optionTabId == detail.tabId ) {
+    if ( s_optionTabId == detail.tabId || detail.tabId == -2 ) {
         return {};
     }
     
@@ -115,7 +118,7 @@ function onBeforeRequest( detail ) {
     filter.ondata = (event) => {
         filter.write( event.data );
         info.length += event.data.byteLength;
-        if ( info.length < Def.limitSize ) {
+        if ( info.length < s_limitSize ) {
             info.dataList.push( event.data );
         } else {
             info.dataList = null;
@@ -126,16 +129,6 @@ function onBeforeRequest( detail ) {
         info.result = result;
         console.log( `stop: ${info.id}, ${info.length}` );
         filter.close();
-        if ( result && info.dataList ) {
-            const b64List = [];
-            info.dataList.forEach( (data)=>{
-                const dataView = new DataView(data);
-                let base64 = btoa(String.fromCharCode.apply(
-                    null, new Uint8Array(dataView.buffer)));
-                b64List.push( base64 );
-            });
-            info.b64List = b64List;
-        }
         browser.runtime.sendMessage( {
             "type": "respData",
             "info": info
@@ -153,7 +146,7 @@ function onBeforeRequest( detail ) {
 }
 
 function sendReqInfo( info, type ) {
-    if ( s_optionTabId == info.tabId ) {
+    if ( s_optionTabId == info.tabId || info.tabId == -2 ) {
         return {};
     }
     

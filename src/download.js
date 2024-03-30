@@ -105,20 +105,19 @@ function downloadFromList( max, list, progressFunc ) {
     return promise;
 }
 
+export function getFilenameWithDate() {
+    let now = new Date();
+    return `${now.getFullYear()}-` +
+        `${num2Str( 2, now.getMonth() + 1 )}-` +
+        `${num2Str( 2, now.getDate() )}_` +
+        `${num2Str( 2, now.getHours() )}-` +
+        `${num2Str( 2, now.getMinutes() )}-` +
+        `${num2Str( 2, now.getSeconds() )}.` +
+        `${num2Str( 3, now.getMilliseconds() )}`;
+}
 
 async function downloadAndJoin( urlList, progressFunc ) {
-    let date_txt;    
-
-    {
-        let now = new Date();
-        date_txt = `${now.getFullYear()}-` +
-            `${num2Str( 2, now.getMonth() + 1 )}-` +
-            `${num2Str( 2, now.getDate() )}_` +
-            `${num2Str( 2, now.getHours() )}-` +
-            `${num2Str( 2, now.getMinutes() )}-` +
-            `${num2Str( 2, now.getSeconds() )}.` +
-            `${num2Str( 3, now.getMilliseconds() )}`;
-    }
+    let date_txt = getFilenameWithDate();
     console.log( date_txt );
     
 
