@@ -5,6 +5,7 @@ import * as Def from "./def.js";
 
 
 const kind2filter = {};
+let s_uuid;
 
 function processReq( info ) {
     //console.log( info );
@@ -100,6 +101,51 @@ async function updateRow( row ) {
     await browser.storage.session.set( work );
 }
 
+const s_excludeHeaderNames = new Set( [
+    "host",
+    "user-agent",
+    "accept-charset", 
+    "accept-encoding", 
+    "access-control-request-headers", 
+    "access-control-request-method", 
+    "connection", 
+    "content-length", 
+    "cookie", 
+    "cookie2", 
+    "date", 
+    "dnt", 
+    "expect", 
+    "keep-alive", 
+    "origin", 
+    "referer", 
+    "te", 
+    "trailer", 
+    "transfer-encoding", 
+    "upgrade", 
+    "via",
+]);
+function normalizeHeader( headerList ) {
+    const headers = [];
+    headerList.forEach( (header)=>{
+        let key = header.name.toLowerCase();
+        if ( !s_excludeHeaderNames.has( key ) ) {
+            if ( !key.startsWith( "sec-" ) && !key.startsWith( "proxy-" ) ) {
+                headers.push( header );
+            }
+        }
+    });
+    return headers;
+}
+function getHeaderFor( headerList, name ) {
+    let val;
+    headerList.forEach( (header)=>{
+        if ( header.name.toLowerCase() == name.toLowerCase() ) {
+            val = header.value;
+        }
+    } );
+    return val;
+}
+
 window.addEventListener(
     "load",
     ()=>{
@@ -137,55 +183,35 @@ window.addEventListener(
                     hlsFlag = true;
                 }
             }
+            console.log( "download", data, hlsFlag );
             if ( hlsFlag ) {
                 const tab = await browser.tabs.get( data.tabId );
-                await DL.downloadFromHls( tab.title, data.url );
+                const headers = new Headers();
+                normalizeHeader( data.reqHeader ).forEach( (header)=>{
+                    headers.append( header[ "name" ], header[ "value" ] );
+                });
+                // origin を上書きさせる
+                let origin = getHeaderFor( data.reqHeader, "origin" );
+                if ( origin ) {
+                    headers.append( `X-my-rewrite-${s_uuid}-Origin`, origin );
+                }
+                await DL.downloadFromHls(
+                    tab.title, data.url, { headers: headers } );
             } else {
                 const anchor = document.createElement("a");
                 anchor.href = data.url;
                 let url = new URL( data.url );
                 anchor.download = url.pathname.replace( /.*\/([^\/]+)$/,"$1" );
-                // anchor.click();
+                anchor.click();
 
-                const opt = {};
-                opt.url = data.url;
-                const excludeHeaderNames = new Set( [
-                    "host",
-                    "user-agent",
-                    "accept-charset", 
-                    "accept-encoding", 
-                    "access-control-request-headers", 
-                    "access-control-request-method", 
-                    "connection", 
-                    "content-length", 
-                    "cookie", 
-                    "cookie2", 
-                    "date", 
-                    "dnt", 
-                    "expect", 
-                    "keep-alive", 
-                    "origin", 
-                    "referer", 
-                    "te", 
-                    "trailer", 
-                    "transfer-encoding", 
-                    "upgrade", 
-                    "via",
-                ]);
+                // android 版 firefox では downloads.download() が使えない 
+                // const opt = {};
+                // opt.url = data.url;
+                // opt.headers = normalizeHeader( data.reqHeader );
 
-                const headers = [];
-                data.reqHeader.forEach( (header)=>{
-                    let key = header.name.toLowerCase();
-                    if ( !excludeHeaderNames.has( key ) ) {
-                        if ( !key.startsWith( "sec-" ) && !key.startsWith( "proxy-" ) ) {
-                            headers.push( header );
-                        }
-                    }
-                });
-                opt.headers = headers;
-                console.log( opt );
-
-                browser.downloads.download( opt );
+                // console.log( opt );
+                // let resp = await browser.downloads.download( opt );
+                // console.log( resp );
             }
         }
         async function viewItem( data ) {
@@ -435,7 +461,8 @@ window.addEventListener(
 
                 {
                     const tab = await browser.tabs.getCurrent();
-                    await browser.runtime.sendMessage( { type: "onview", info:tab.id } );
+                    s_uuid = await browser.runtime.sendMessage(
+                        { type: "onview", info:tab.id } );
                 }
             }
             applyFilter();

@@ -5,7 +5,7 @@ import * as Def from "./def.js";
 
 let s_optionTabId = -1;
 let s_limitSize = 200 * 1024;
-
+let s_uuid = self.crypto.randomUUID();
 
 
 const s_kind2ContentTypeSet = {
@@ -70,6 +70,7 @@ browser.runtime.onMessage.addListener( (msg, sender, sendResponse) => {
     if ( msg.type == "onview" ) {
         s_optionTabId = msg.info;
         registerListener();
+        sendResponse( s_uuid );
     } else if ( msg.type == "capture" ) {
         if ( msg.info ) {
             registerListener();
@@ -145,8 +146,30 @@ function onBeforeRequest( detail ) {
     return {};    
 }
 
+function rewriteHeader( info ) {
+    // X-my-rewrite- で始まる名前の Header を X-my-rewrite- を取って上書き。
+    // 主に Origin を上書く。
+    const rewriteKey = `X-my-rewrite-${s_uuid}-`.toLowerCase();
+    const newReqHeaders = [];
+    info.requestHeaders.forEach( (header)=>{
+        const key = header.name;
+        if ( key.toLowerCase().startsWith( rewriteKey ) ) {
+            newReqHeaders.push( { name: key.substring( rewriteKey.length ),
+                                  value: header.value } );
+        } else {
+            newReqHeaders.push( header );
+        }
+    });
+    return { requestHeaders: newReqHeaders };
+}
+
 function sendReqInfo( info, type ) {
     if ( s_optionTabId == info.tabId || info.tabId == -2 ) {
+        if ( s_optionTabId == info.tabId ) {
+            if ( type == "reqSend" ) {
+                return rewriteHeader( info );
+            }
+        }
         return {};
     }
     
@@ -176,6 +199,12 @@ function sendReqInfo( info, type ) {
         "type": type,
         "info": msg,
     });
+
+
+    if ( type == "reqSend" ) {
+        return rewriteHeader( info );
+    }
+    
     return {};
 }
 

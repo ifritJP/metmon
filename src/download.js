@@ -19,13 +19,13 @@ function joinUrl( srcURL, url ) {
     return url;
 }
 
-async function retryDownload( url, retryCount ) {
+async function retryDownload( url, opt, retryCount ) {
     let response;
     let count = 0;
 
     while ( count <= retryCount ) {
         try {
-            response = await fetch(url);
+            response = await fetch(url, opt);
         } catch (error) {
             console.error('error:', error);
             throw error;
@@ -40,11 +40,12 @@ async function retryDownload( url, retryCount ) {
         }
         count++;
     }
-    throw new Error( "retry over -- " + url );
+
+    throw new Error( "retry over -- " + command );
 }
 
 
-function downloadFromList( max, list, progressFunc ) {
+function downloadFromList( max, list, opt, progressFunc ) {
 
     let promise = new Promise( (resolve, reject)=>{
         let url2blob = new Map();
@@ -67,10 +68,12 @@ function downloadFromList( max, list, progressFunc ) {
         function req( url, retryCount ) {
             if ( retryCount < maxRetry ) {
                 retryCount++;
-                fetch( url ).then((resp)=>{
+                fetch( url, opt ).then((resp)=>{
                     if ( resp.status != 200 ) {
                         console.log( `retry -- ${retryCount}:${url}` );
-                        req( url, retryCount );
+                        setTimeout(()=>{
+                            req( url, retryCount );
+                        }, retryCount * 1000 );
                     } else {
                         onDownload( url, resp );
                     }
@@ -116,7 +119,7 @@ export function getFilenameWithDate() {
         `${num2Str( 3, now.getMilliseconds() )}`;
 }
 
-async function downloadAndJoin( urlList, progressFunc ) {
+async function downloadAndJoin( urlList, opt, progressFunc ) {
     let date_txt = getFilenameWithDate();
     console.log( date_txt );
     
@@ -149,7 +152,7 @@ async function downloadAndJoin( urlList, progressFunc ) {
 
     let index = 0;
     let count = 0;
-    cancelFlag = ! (await downloadFromList( max_div, urlList, (url2blob)=>{
+    cancelFlag = ! (await downloadFromList( max_div, urlList, opt, (url2blob)=>{
         count++;
         if ( !progressFunc( count ) ) {
             return false;
@@ -175,12 +178,12 @@ async function downloadAndJoin( urlList, progressFunc ) {
     }
 }
 
-async function downloadFromHlsStream( title, url ) {
-    console.log( "downloadFromHlsStream", title, url );
+async function downloadFromHlsStream( title, url, opt ) {
+    console.log( "downloadFromHlsStream", title, url, opt );
 
     let srcURL = new URL( url );
 
-    let resp = await fetch( url );
+    let resp = await fetch( url, opt );
     let m3u = await resp.text();
 
     const urlList = [];
@@ -210,7 +213,7 @@ async function downloadFromHlsStream( title, url ) {
         ()=>{ cancelFlag = true; } );
 
     await downloadAndJoin(
-        urlList,
+        urlList, opt,
         (progress)=>{
             dummy_el.querySelector( "progress" ).value = progress;
             return !cancelFlag;
@@ -240,9 +243,26 @@ function analyzeHls( m3u, url ) {
     return url2detail;
 }
 
-export async function downloadFromHls( title, url ) {
-    const resp = await fetch( url );
-    const m3u = await resp.text();
+async function download( url, opt ) {
+    const resp = await fetch( url, opt );
+    if ( !resp.ok ) {
+        return null;
+    }
+    return await resp.arrayBuffer();
+}
+
+export async function downloadFromHls( title, url, opt ) {
+    const arrayBuffer = await download( url, opt );
+    if ( !arrayBuffer ) {
+        browser.notifications.create({
+            "type": "basic",
+            "title": "network monitor without devtools",
+            "message": `failed to download -- ${title}`
+        });
+        return;
+    }
+    let decoder = new TextDecoder();
+    const m3u = decoder.decode( arrayBuffer );
 
     const list_el = document.querySelector( "#stream-list" );
     const selector_el = document.querySelector( ".stream-selector" );
@@ -268,7 +288,7 @@ export async function downloadFromHls( title, url ) {
                 "click",
                 async ()=>{
                     selector_el.hidden = true;
-                    await downloadFromHlsStream( title, stream_url );
+                    await downloadFromHlsStream( title, stream_url, opt );
                 });
             list_el.append( item_el );
         });
@@ -279,6 +299,6 @@ export async function downloadFromHls( title, url ) {
         
         selector_el.hidden = false;
     } else {
-        await downloadFromHlsStream( title, url );
+        await downloadFromHlsStream( title, url, opt );
     }
 }
