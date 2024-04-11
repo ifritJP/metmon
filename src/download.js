@@ -119,13 +119,24 @@ export function getFilenameWithDate() {
         `${num2Str( 3, now.getMilliseconds() )}`;
 }
 
-async function downloadAndJoin( urlList, opt, progressFunc ) {
+function arrayBufferToBase64(buffer) {
+  const bytes = new Uint8Array(buffer);
+  const binaryString = bytes.reduce((acc, byte) => acc + String.fromCharCode(byte), '');
+  return btoa(binaryString);
+}
+
+function arrayBufferToHex(buffer) {
+  const hexString = Array.from(new Uint8Array(buffer))
+    .map(x => x.toString(16).padStart(2, '0'))
+    .join('');
+  return hexString.toUpperCase();
+}
+
+async function downloadAndJoin( urlList, opt, metaInfo, progressFunc ) {
     let date_txt = getFilenameWithDate();
     console.log( date_txt );
-    
 
-
-    function saveAs( name, blob ) {
+    async function saveAs( name, blob ) {
         let workUrl = URL.createObjectURL( blob );
 
         const anchor = document.createElement("a");
@@ -174,11 +185,12 @@ async function downloadAndJoin( urlList, opt, progressFunc ) {
     
     if ( !cancelFlag ) {
         let blob = await fileObj.getBlob();
-        saveAs( `${date_txt}${ext}`, blob );
+        await saveAs( `${date_txt}${ext}`, blob );
+        await saveAs( `${date_txt}.json`, new Blob( [ JSON.stringify( metaInfo ) ] ) );
     }
 }
 
-async function downloadFromHlsStream( title, url, opt ) {
+async function downloadFromHlsStream( title, url, opt, rewritePrefix ) {
     console.log( "downloadFromHlsStream", title, url, opt );
 
     let srcURL = new URL( url );
@@ -186,6 +198,19 @@ async function downloadFromHlsStream( title, url, opt ) {
     let resp = await fetch( url, opt );
     let m3u = await resp.text();
 
+    let metaInfo = {};
+    metaInfo.userAgent = navigator.userAgent;
+    metaInfo.headerList = [];
+    
+    for (const pair of opt.headers.entries()) {
+        let name = pair[0];
+        if ( name.toLowerCase().startsWith( rewritePrefix ) ) {
+            name = name.substring( rewritePrefix.length );
+        }
+        metaInfo.headerList.push( { name: name, value: pair[1] } );
+    }
+
+    const extInfo = {};
     const urlList = [];
     let hasHeader = false;
     m3u.split( "\n" ).forEach( (line)=>{
@@ -194,8 +219,15 @@ async function downloadFromHlsStream( title, url, opt ) {
             hasHeader = false;
         } else if ( line.startsWith( "#EXTINF:" ) ) {
             hasHeader = true;
+        } else if ( line.startsWith( "#EXT-X-" ) ) {
+            if ( !line.startsWith( "#EXT-X-ENDLIST" ) ) {
+                const index = line.indexOf( ":" );
+                extInfo[ line.substring( 0, index ) ] =
+                    line.substring( index + 1 );
+            }
         }
     });
+    metaInfo.extInfo = extInfo;
 
     const div_el = document.getElementById( "progress" );
 
@@ -213,7 +245,7 @@ async function downloadFromHlsStream( title, url, opt ) {
         ()=>{ cancelFlag = true; } );
 
     await downloadAndJoin(
-        urlList, opt,
+        urlList, opt, metaInfo,
         (progress)=>{
             dummy_el.querySelector( "progress" ).value = progress;
             return !cancelFlag;
@@ -251,7 +283,7 @@ async function download( url, opt ) {
     return await resp.arrayBuffer();
 }
 
-export async function downloadFromHls( title, url, opt ) {
+export async function downloadFromHls( title, url, opt, rewritePrefix ) {
     const arrayBuffer = await download( url, opt );
     if ( !arrayBuffer ) {
         browser.notifications.create({
@@ -288,7 +320,7 @@ export async function downloadFromHls( title, url, opt ) {
                 "click",
                 async ()=>{
                     selector_el.hidden = true;
-                    await downloadFromHlsStream( title, stream_url, opt );
+                    await downloadFromHlsStream( title, stream_url, opt, rewritePrefix );
                 });
             list_el.append( item_el );
         });
@@ -299,6 +331,6 @@ export async function downloadFromHls( title, url, opt ) {
         
         selector_el.hidden = false;
     } else {
-        await downloadFromHlsStream( title, url, opt );
+        await downloadFromHlsStream( title, url, opt, rewritePrefix );
     }
 }

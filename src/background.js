@@ -7,6 +7,8 @@ let s_optionTabId = -1;
 let s_limitSize = 200 * 1024;
 let s_uuid = self.crypto.randomUUID();
 
+let s_captureFlag = true;
+
 
 const s_kind2ContentTypeSet = {
     image: new Set( [
@@ -32,6 +34,7 @@ const s_kind2ContentTypeSet = {
         "video/mp2t",
         "application/vnd.apple.mpegurl",
         "application/vnd.yt-ump",
+        "application/x-mpegurl",
     ] ),
     html: new Set( [
         "text/html",
@@ -52,6 +55,7 @@ const s_kind2ContentTypeSet = {
 
 function contentType2Kind( contentType ) {
     if ( contentType && contentType != "" ) {
+        contentType = contentType.toLowerCase();
         let tokens = contentType.split( ";" );
         if ( tokens.length > 1 ) {
             contentType = tokens[ 0 ];
@@ -72,11 +76,7 @@ browser.runtime.onMessage.addListener( (msg, sender, sendResponse) => {
         registerListener();
         sendResponse( s_uuid );
     } else if ( msg.type == "capture" ) {
-        if ( msg.info ) {
-            registerListener();
-        } else {
-            removeListener();
-        }
+        s_captureFlag = msg.info;
     } else if ( msg.type == "limit-size" ) {
         s_limitSize = msg.info * 1024;
     }
@@ -104,14 +104,10 @@ browser.browserAction.onClicked.addListener( async () => {
     }
 });
 
-function onBeforeRequest( detail ) {
-    if ( s_optionTabId == detail.tabId || detail.tabId == -2 ) {
-        return {};
-    }
-    
-    let filter = browser.webRequest.filterResponseData(detail.requestId);
+function setRequestFilter( reqId ) {
+    let filter = browser.webRequest.filterResponseData(reqId);
     const info = {
-        id:detail.requestId,
+        id:reqId,
         length: 0,
         dataList: [],
         result: false,
@@ -142,8 +138,6 @@ function onBeforeRequest( detail ) {
     filter.onerr = (event)=>{
         sendResult( event, false );
     };
-
-    return {};    
 }
 
 function rewriteHeader( info ) {
@@ -151,15 +145,20 @@ function rewriteHeader( info ) {
     // 主に Origin を上書く。
     const rewriteKey = `X-my-rewrite-${s_uuid}-`.toLowerCase();
     const newReqHeaders = [];
+    let rewrite = false;
     info.requestHeaders.forEach( (header)=>{
         const key = header.name;
         if ( key.toLowerCase().startsWith( rewriteKey ) ) {
             newReqHeaders.push( { name: key.substring( rewriteKey.length ),
                                   value: header.value } );
+            rewrite = true;
         } else {
             newReqHeaders.push( header );
         }
     });
+    if ( !rewrite ) {
+        return {};
+    }
     return { requestHeaders: newReqHeaders };
 }
 
@@ -171,6 +170,14 @@ function sendReqInfo( info, type ) {
             }
         }
         return {};
+    }
+
+    if ( !s_captureFlag ) {
+        return {};
+    }
+
+    if ( type == "reqSend" ) {
+        setRequestFilter( info.requestId );
     }
     
     const msg = {
@@ -192,7 +199,7 @@ function sendReqInfo( info, type ) {
                 msg.content_type = header[ "value" ];
             }
         });
-        msg.kind = contentType2Kind( msg.content_type.toLowerCase() );
+        msg.kind = contentType2Kind( msg.content_type );
     }
 
     browser.runtime.sendMessage( {
@@ -222,14 +229,6 @@ function reqErr( info ) {
 }
 
 function registerListener() {
-    browser.webRequest.onBeforeRequest.addListener(
-        onBeforeRequest,
-        {
-            urls: [ "*://*/*" ],
-        },
-        [ "blocking" ]
-    );
-
     browser.webRequest.onBeforeSendHeaders.addListener(
         reqSend,
         {
@@ -262,7 +261,7 @@ function registerListener() {
 }
 
 function removeListener() {
-    browser.webRequest.onBeforeRequest.removeListener( onBeforeRequest );
+    //browser.webRequest.onBeforeRequest.removeListener( onBeforeRequest );
     browser.webRequest.onBeforeSendHeaders.removeListener( reqSend );
     browser.webRequest.onResponseStarted.removeListener( reqStart );
     browser.webRequest.onCompleted.removeListener( reqEnd );

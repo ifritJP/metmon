@@ -4,6 +4,24 @@ import * as DL from "./download.js";
 import * as Def from "./def.js";
 
 
+const s_hlsContentTypeSet = new Set( [
+    "application/vnd.apple.mpegurl",
+    "application/x-mpegurl",
+]);
+
+function isHlsContentType( contentType ) {
+    if ( contentType && contentType != "" ) {
+        contentType = contentType.toLowerCase();
+        let tokens = contentType.split( ";" );
+        if ( tokens.length > 1 ) {
+            contentType = tokens[ 0 ];
+        }
+        return s_hlsContentTypeSet.has( contentType );
+    }
+    return false;
+}
+
+
 const kind2filter = {};
 let s_uuid;
 
@@ -175,7 +193,7 @@ window.addEventListener(
         }
         async function download( data ) {
             let hlsFlag = false;
-            if ( data.content_type == "application/vnd.apple.mpegurl" ) {
+            if ( isHlsContentType( data.content_type ) ) {
                 hlsFlag = true;
             } else if ( data.content_type == "" ) {
                 const txt = await getTxtFromInfo( data, 100 );
@@ -190,16 +208,28 @@ window.addEventListener(
                 normalizeHeader( data.reqHeader ).forEach( (header)=>{
                     headers.append( header[ "name" ], header[ "value" ] );
                 });
+
+                let rewritePrefix = `X-my-rewrite-${s_uuid}-`;
                 // origin を上書きさせる
                 let origin = getHeaderFor( data.reqHeader, "origin" );
                 if ( origin ) {
-                    headers.append( `X-my-rewrite-${s_uuid}-Origin`, origin );
+                    headers.append( `${rewritePrefix}Origin`, origin );
+                }
+                let referer = getHeaderFor( data.reqHeader, "referer" );
+                if ( referer ) {
+                    headers.append( `${rewritePrefix}Referer`, referer );
                 }
                 await DL.downloadFromHls(
-                    tab.title, data.url, { headers: headers } );
+                    tab.title, data.url, { headers: headers },
+                    rewritePrefix.toLowerCase() );
             } else {
                 const anchor = document.createElement("a");
-                anchor.href = data.url;
+                if ( data.dataList ) {
+                    let blob = new Blob( data.dataList );
+                    anchor.href = URL.createObjectURL( blob );
+                } else {
+                    anchor.href = data.url;
+                }
                 let url = new URL( data.url );
                 anchor.download = url.pathname.replace( /.*\/([^\/]+)$/,"$1" );
                 anchor.click();

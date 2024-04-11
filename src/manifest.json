@@ -1,7 +1,7 @@
 {
     "manifest_version": 2,
-    "name": "netmon",
-    "version": "0.0.13",
+    "name": "network monitor without devtools",
+    "version": "0.0.14",
 
     "browser_specific_settings": {
 	"gecko": {
@@ -24,7 +24,7 @@
     },
 
     "options_ui": {
-	"page": "options.html",
+	"page": "usage.html",
 	"browser_style": true
     },
 
