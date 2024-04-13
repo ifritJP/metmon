@@ -515,7 +515,7 @@ window.addEventListener(
                     stockInfo.clear();
                     stockInfo2.clear();
                     id2row.clear();
-                    browser.storage.local.clear();
+                    browser.storage.session.clear();
                     
                     redrawTable();
                 });
