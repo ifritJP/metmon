@@ -25,11 +25,6 @@ function isHlsContentType( contentType ) {
 const kind2filter = {};
 let s_uuid;
 
-function processReq( info ) {
-    //console.log( info );
-    // 
-}
-
 function dispRow( table, rowList, filterTabId ) {
     const work = rowList.filter( (row)=>{
         if ( ( filterTabId == -10 || row.tabId == filterTabId ) &&
@@ -38,7 +33,7 @@ function dispRow( table, rowList, filterTabId ) {
         }
         return false;
     });
-    
+
     table.addData( work );
 }
 
@@ -47,7 +42,7 @@ async function updateKind( row ) {
         let newKind = row.kind;
         const txt = await getTxtFromInfo( row, 100 );
         if ( txt.startsWith( "#EXTM3U" ) ) {
-            newKind = "media";
+            newKind = "streaming";
         }
         if ( newKind != row.kind ) {
             row.kind = newKind;
@@ -57,7 +52,7 @@ async function updateKind( row ) {
     return false;
 }
 
-function addRow( stockInfo, stockInfo2, table, info, filterTabId ) {
+function makeRow( stockInfo, stockInfo2, info ) {
     const row = {
         tabId: info.tabId,
         id: info.id,
@@ -80,7 +75,11 @@ function addRow( stockInfo, stockInfo2, table, info, filterTabId ) {
         row.reqHeader = stockInfo2.get( info.id ).reqHeader;
         stockInfo2.delete( info.id );
     }
+    return row;
+}
 
+function addRow( stockInfo, stockInfo2, table, info, filterTabId ) {
+    let row = makeRow( stockInfo, stockInfo2, info );
     dispRow( table, [ row ], filterTabId );
     return row;
 }
@@ -353,18 +352,22 @@ window.addEventListener(
         const stockInfo = new Map();
         const stockInfo2 = new Map();
 
+        let reqTotalCount = 0;
+        let reqTotalSize = 0;
 
-        browser.runtime.onMessage.addListener( async (msg, sender, sendResponse) => {
-            if ( msg.type == "init" ) {
-                sendResponse( true );
-            } else if ( msg.type == "req" ) {
-                const row = addRow(
-                    stockInfo, stockInfo2, table, msg.info, filterTabId );
-                id2row.set( msg.info.id, row );
-                updateRow( row );
-                processReq( table, msg.info );
+        function updateTotal( count, size ) {
+            reqTotalCount += count;
+            reqTotalSize += size;
+            document.querySelector( "#capture-total" ).innerHTML =
+                `:[${reqTotalCount}/${(reqTotalSize/1024/1024).toFixed(2)}MB]`;
+        }
+
+        async function processReq( msg ) {
+            let addFlag = false;
+            if ( msg.type == "req" ) {
+                updateTotal( 1, 0 );
+                addFlag = true;
             } else if ( msg.type == "reqSend" ) {
-                processReq( table, msg.info );
                 const row = id2row.get( msg.info.id );
                 if ( row ) {
                     row.reqHeader = msg.info.reqHeader;
@@ -381,11 +384,12 @@ window.addEventListener(
                     stockInfo2.set( msg.info.id, msg.info );
                 }
             } else if ( msg.type == "reqEnd" ) {
-                processReq( table, msg.info );
             } else if ( msg.type == "reqErr" ) {
-                processReq( table, msg.info );
             } else if ( msg.type == "respData" ) {
-                processReq( table, msg.info );
+                if ( msg.info.dataList ) {
+                    let blob = new Blob( msg.info.dataList );
+                    updateTotal( 0, blob.size );
+                }
                 const row = id2row.get( msg.info.id );
                 if ( row ) {
                     row.size = msg.info.length;
@@ -417,6 +421,58 @@ window.addEventListener(
                     stockInfo.set( msg.info.id, msg.info );
                 }
             }
+            return addFlag;
+        }
+
+        const msgQueue = [];
+        // msgQueue 処理の排他用フラグ
+        let processingQueue = false;
+        async function processQueue() {
+            if ( processingQueue ) {
+                // 別のタイマーの processingQueue() で処理中なので、
+                // ここでは処理せずに戻る
+                return true;
+            }
+            processingQueue = true;
+            let list = [];
+            while ( msgQueue.length > 0 ) {
+                let msg = msgQueue.pop();
+                if ( await processReq( msg ) ) {
+                    list.push( msg );
+                }
+            }
+            processingQueue = false;
+
+            if ( list.length > 0 ) {
+                // 1 行つづテーブルに追加すると重いので、
+                // 溜っているデータを一括で追加する
+                let rowList = list.map( (msg)=>{
+                    let row = makeRow( stockInfo, stockInfo2, msg.info );
+                    id2row.set( msg.info.id, row );
+                    updateRow( row );
+                    return row;
+                });
+
+                rowList.sort( (row1,row2)=>{
+                    const num1 = parseInt( row1.id );
+                    const num2 = parseInt( row2.id );
+                    return num1 - num2;
+                });
+                dispRow( table, rowList, filterTabId );
+            }
+        }
+
+        browser.runtime.onMessage.addListener( (msg, sender, sendResponse) => {
+            if ( msg.type == "init" ) {
+                sendResponse( true );
+            } else {
+                // メッセージ処理が重くならないように、
+                // ここでは直接処理せずにキューに詰む
+                msgQueue.push( msg );
+                setTimeout( ()=>{
+                    processQueue();
+                }, 1000 );
+            }
         });
 
         {
@@ -427,6 +483,7 @@ window.addEventListener(
                 "kind-data",
                 "kind-image",
                 "kind-media",
+                "kind-streaming",
                 "kind-etc"
             ];
 
@@ -478,6 +535,12 @@ window.addEventListener(
                             const row = logs[ key ];
                             list.push( logs[ key ] );
                             id2row.set( row.id, row );
+                            let dataSize = 0;
+                            if ( row.dataList ) {
+                                let blob = new Blob( row.dataList );
+                                dataSize = blob.size;
+                            }
+                            updateTotal( 1, dataSize  );
                         });
                     list.sort( (row1,row2)=>{
                         const num1 = parseInt( row1.id );
@@ -485,7 +548,6 @@ window.addEventListener(
                         return num1 - num2;
                     });
                     dispRow( table, list, filterTabId );
-                    // table.addData( list );
                 }
                 readLog();
 
@@ -516,6 +578,9 @@ window.addEventListener(
                     stockInfo2.clear();
                     id2row.clear();
                     browser.storage.session.clear();
+                    reqTotalCount = 0;
+                    reqTotalSize = 0;
+                    updateTotal(0,0);
                     
                     redrawTable();
                 });
@@ -561,3 +626,9 @@ window.addEventListener(
                 browser.runtime.sendMessage( { type:"capture", info:this.checked } );
             });
     });
+
+window.addEventListener('beforeunload', function(e) {
+    if ( DL.isDownloadingNow() ) {
+        e.returnValue = 'This extension is downloading now.';
+    }
+});

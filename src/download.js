@@ -254,6 +254,14 @@ async function downloadFromHlsStream( title, url, opt, rewritePrefix ) {
     dummy_el.remove();
 }
 
+export function isDownloadingNow() {
+    const div_el = document.getElementById( "progress" );
+    if ( div_el.querySelector( "progress" ) ) {
+        return true;
+    }
+    return false;
+}
+
 
 function analyzeHls( m3u, url ) {
     // 各 url → それぞれのコーデックの詳細マップの作成

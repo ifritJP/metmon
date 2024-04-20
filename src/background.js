@@ -32,8 +32,10 @@ const s_kind2ContentTypeSet = {
         "video/3gp",
         "video/mkv",
         "video/mp2t",
-        "application/vnd.apple.mpegurl",
         "application/vnd.yt-ump",
+    ] ),
+    streaming: new Set( [
+        "application/vnd.apple.mpegurl",
         "application/x-mpegurl",
     ] ),
     html: new Set( [
@@ -162,6 +164,10 @@ function rewriteHeader( info ) {
     return { requestHeaders: newReqHeaders };
 }
 
+function sendMsg( msg ) {
+    browser.runtime.sendMessage( msg );
+}
+
 function sendReqInfo( info, type ) {
     if ( s_optionTabId == info.tabId || info.tabId == -2 ) {
         if ( s_optionTabId == info.tabId ) {
@@ -202,10 +208,7 @@ function sendReqInfo( info, type ) {
         msg.kind = contentType2Kind( msg.content_type );
     }
 
-    browser.runtime.sendMessage( {
-        "type": type,
-        "info": msg,
-    });
+    sendMsg( { "type": type, "info": msg, } );
 
 
     if ( type == "reqSend" ) {
