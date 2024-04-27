@@ -2,7 +2,7 @@
 
 import * as DL from "./download.js";
 import * as Def from "./def.js";
-
+import * as Zip from "./oss/jszip/jszip.min.js";
 
 const s_hlsContentTypeSet = new Set( [
     "application/vnd.apple.mpegurl",
@@ -11,12 +11,7 @@ const s_hlsContentTypeSet = new Set( [
 
 function isHlsContentType( contentType ) {
     if ( contentType && contentType != "" ) {
-        contentType = contentType.toLowerCase();
-        let tokens = contentType.split( ";" );
-        if ( tokens.length > 1 ) {
-            contentType = tokens[ 0 ];
-        }
-        return s_hlsContentTypeSet.has( contentType );
+        return s_hlsContentTypeSet.has( Def.normlizeContentType( contentType ) );
     }
     return false;
 }
@@ -35,6 +30,18 @@ function dispRow( table, rowList, filterTabId ) {
     });
 
     table.addData( work );
+}
+
+function url2filename( urltxt, contentType ) {
+    contentType = Def.normlizeContentType( contentType );
+    const url = new URL( urltxt );
+    let ext = Def.contentType2ext[ contentType ];
+    if ( ext ) {
+        ext = "." + ext;
+    } else {
+        ext = "";
+    }
+    return url.pathname.replace( /.*\/([^\/]+)$/,"$1" ) + ext;;    
 }
 
 async function updateKind( row ) {
@@ -163,6 +170,25 @@ function getHeaderFor( headerList, name ) {
     return val;
 }
 
+function save( table ) {
+    let zip = new JSZip();
+
+    table.getData("active").forEach( ( row )=>{
+        if ( row.dataList ) {
+            let name = `${DL.num2Str( 5, row.id )}_${url2filename( row.url, row.content_type )}`;
+            zip.file( name, new Blob( row.dataList ) );
+        }
+    });
+    
+    zip.generateAsync({type:"blob"}).then(function(content) {
+        const url = URL.createObjectURL( content );
+        const anchor = document.createElement("a");
+        anchor.href = url;
+        anchor.download = `${DL.getFilenameWithDate()}.zip`;
+        anchor.click();
+    });
+}
+
 window.addEventListener(
     "load",
     ()=>{
@@ -179,6 +205,8 @@ window.addEventListener(
             });
             command += ` --output ${DL.getFilenameWithDate()}.bin`;
             navigator.clipboard.writeText( command );
+        }
+        function getFilteredRowList() {
         }
         function filter( data ) {
             filterTabId = data.tabId;
@@ -229,8 +257,7 @@ window.addEventListener(
                 } else {
                     anchor.href = data.url;
                 }
-                let url = new URL( data.url );
-                anchor.download = url.pathname.replace( /.*\/([^\/]+)$/,"$1" );
+                anchor.download = url2filename( data.url, data.content_type );
                 anchor.click();
 
                 // android 版 firefox では downloads.download() が使えない 
@@ -617,6 +644,11 @@ window.addEventListener(
                         
                     });
             }
+            document.getElementById( "save" ).addEventListener(
+                "click",
+                ()=>{
+                    save(table);
+                });
         }
         setupSetting();
 
@@ -625,6 +657,7 @@ window.addEventListener(
             function () {
                 browser.runtime.sendMessage( { type:"capture", info:this.checked } );
             });
+        
     });
 
 window.addEventListener('beforeunload', function(e) {

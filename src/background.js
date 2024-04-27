@@ -10,60 +10,12 @@ let s_uuid = self.crypto.randomUUID();
 let s_captureFlag = true;
 
 
-const s_kind2ContentTypeSet = {
-    image: new Set( [
-        "image/jpeg",
-        "image/png",
-        "image/gif",
-        "image/bmp",
-        "image/webp",
-        "image/vnd.microsoft.icon",
-        "image/x-icon",
-        "image/svg+xml",
-    ] ),
-    media: new Set( [
-        "video/mp4",
-        "video/webm",
-        "video/ogg",
-        "video/mov",
-        "video/avi",
-        "video/flv",
-        "video/wmv",
-        "video/3gp",
-        "video/mkv",
-        "video/mp2t",
-        "application/vnd.yt-ump",
-    ] ),
-    streaming: new Set( [
-        "application/vnd.apple.mpegurl",
-        "application/x-mpegurl",
-    ] ),
-    html: new Set( [
-        "text/html",
-    ] ),
-    css: new Set( [
-        "text/css",
-    ] ),
-    js: new Set( [
-        "text/javascript",
-        "application/javascript",
-    ] ),
-    data: new Set( [
-        "application/json",
-        "application/xml",
-        "application/json+protobuf",
-    ] ),
-};
 
 function contentType2Kind( contentType ) {
     if ( contentType && contentType != "" ) {
-        contentType = contentType.toLowerCase();
-        let tokens = contentType.split( ";" );
-        if ( tokens.length > 1 ) {
-            contentType = tokens[ 0 ];
-        }
-        for ( const kind of Object.keys( s_kind2ContentTypeSet ) ) {
-            let mimeSet = s_kind2ContentTypeSet[ kind ];
+        contentType = Def.normlizeContentType( contentType );
+        for ( const kind of Object.keys( Def.kind2ContentTypeSet ) ) {
+            let mimeSet = Def.kind2ContentTypeSet[ kind ];
             if ( mimeSet.has( contentType ) ) {
                 return kind;
             }

@@ -1,6 +1,6 @@
 import * as FS from "./fs.js";
 
-function num2Str( fig, num ) {
+export function num2Str( fig, num ) {
     return num.toString(10).padStart( fig, '0' );
 }
 
