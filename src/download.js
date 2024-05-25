@@ -45,7 +45,7 @@ async function retryDownload( url, opt, retryCount ) {
 }
 
 
-function downloadFromList( max, list, opt, progressFunc ) {
+function downloadFromList( max, list, opt, logFunc, progressFunc ) {
 
     let promise = new Promise( (resolve, reject)=>{
         let url2blob = new Map();
@@ -66,6 +66,11 @@ function downloadFromList( max, list, opt, progressFunc ) {
         }
         
         function req( url, retryCount ) {
+            {
+                let len = list.length;
+                let count = len - remain.length;
+                logFunc( `${count}/${len} -- ${url}` );
+            }
             if ( retryCount < maxRetry ) {
                 retryCount++;
                 fetch( url, opt ).then((resp)=>{
@@ -91,12 +96,13 @@ function downloadFromList( max, list, opt, progressFunc ) {
                 progress++;
                 url2blob.set( url, blob );
 
-                if ( !progressFunc( url2blob ) ) {
-                    resolve( false );
-                } else {
-                    if ( progress == list.length ) {
-                        resolve( true );
+                progressFunc( url2blob ).then( (continueFlag)=> {
+                    if ( !continueFlag ) {
+                        resolve( false );
                     }
+                });
+                if ( progress == list.length ) {
+                    resolve( true );
                 }
             });
         }
@@ -132,7 +138,7 @@ function arrayBufferToHex(buffer) {
   return hexString.toUpperCase();
 }
 
-async function downloadAndJoin( urlList, opt, metaInfo, progressFunc ) {
+async function downloadAndJoin( urlList, opt, metaInfo, logFunc, progressFunc ) {
     let date_txt = getFilenameWithDate();
     console.log( date_txt );
 
@@ -163,28 +169,32 @@ async function downloadAndJoin( urlList, opt, metaInfo, progressFunc ) {
 
     let index = 0;
     let count = 0;
-    cancelFlag = ! (await downloadFromList( max_div, urlList, opt, (url2blob)=>{
-        count++;
-        if ( !progressFunc( count ) ) {
-            return false;
-        }
-
-        while ( index < urlList.length ) {
-            let url = urlList[ index ];
-            if ( url2blob.has( url ) ) {
-                index++;
-                writer.write( url2blob.get( url ) );
-            } else {
-                break;
+    cancelFlag = !(await downloadFromList(
+        max_div, urlList, opt, logFunc,
+        async (url2blob)=>{
+            count++;
+            if ( !progressFunc( count ) ) {
+                return false;
             }
-        }
-        return true;
-    }));
+
+            while ( index < urlList.length ) {
+                let url = urlList[ index ];
+                if ( url2blob.has( url ) ) {
+                    index++;
+                    logFunc( `write a packet to the filesystem.  -- ${index}/${urlList.length}` );
+                    await writer.write( url2blob.get( url ) );
+                } else {
+                    break;
+                }
+            }
+            return true;
+        }));
     
     await writer.close();
     
     if ( !cancelFlag ) {
         let blob = await fileObj.getBlob();
+        logFunc( "save" );
         await saveAs( `${date_txt}${ext}`, blob );
         await saveAs( `${date_txt}.json`, new Blob( [ JSON.stringify( metaInfo ) ] ) );
     }
@@ -236,16 +246,24 @@ async function downloadFromHlsStream( title, url, opt, rewritePrefix ) {
     dummy_el.innerHTML = `
 <input type="button" value="cancel" >
 <div>${title}</div>
+<input type="text" value="" style="width:100%;">
 <progress style="width:100%;" max="${urlList.length}" value="0">
+
 `;
 
     let cancelFlag = false;
-    dummy_el.querySelector( "input" ).addEventListener(
+    dummy_el.querySelector( 'input[type="button"]' ).addEventListener(
         "click",
-        ()=>{ cancelFlag = true; } );
+        ()=>{
+            cancelFlag = true;
+            console.log( "click cancel" );
+        } );
 
     await downloadAndJoin(
         urlList, opt, metaInfo,
+        (log)=>{
+            dummy_el.querySelector( 'input[type="text"]').value = log;
+        },
         (progress)=>{
             dummy_el.querySelector( "progress" ).value = progress;
             return !cancelFlag;

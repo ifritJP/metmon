@@ -27,6 +27,7 @@ export const kind2ContentTypeSet = {
     streaming: new Set( [
         "application/vnd.apple.mpegurl",
         "application/x-mpegurl",
+        "audio/mpegurl",
     ] ),
     html: new Set( [
         "text/html",

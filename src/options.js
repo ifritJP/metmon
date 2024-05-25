@@ -7,6 +7,7 @@ import * as Zip from "./oss/jszip/jszip.min.js";
 const s_hlsContentTypeSet = new Set( [
     "application/vnd.apple.mpegurl",
     "application/x-mpegurl",
+    "audio/mpegurl",
 ]);
 
 function isHlsContentType( contentType ) {
@@ -70,6 +71,7 @@ function makeRow( stockInfo, stockInfo2, info ) {
         kind: info.kind,
         size: info.length,
         info: info,
+        downloading: false,
     };
     if ( stockInfo.has( info.id ) ) {
         const stock = stockInfo.get( info.id );
@@ -219,6 +221,18 @@ window.addEventListener(
             header_el.classList.add( "filtered-header" );
         }
         async function download( data ) {
+            {
+                // ダウンロード開始を更新
+                data.downloading = true;
+                table.updateData( [{
+                    id:data.id,
+                    downloading:true,
+                }] );
+                updateRow( data );
+            }
+            const tab = await browser.tabs.get( data.tabId );
+            const title = tab.title;
+            
             let hlsFlag = false;
             if ( isHlsContentType( data.content_type ) ) {
                 hlsFlag = true;
@@ -230,7 +244,6 @@ window.addEventListener(
             }
             console.log( "download", data, hlsFlag );
             if ( hlsFlag ) {
-                const tab = await browser.tabs.get( data.tabId );
                 const headers = new Headers();
                 normalizeHeader( data.reqHeader ).forEach( (header)=>{
                     headers.append( header[ "name" ], header[ "value" ] );
@@ -247,7 +260,7 @@ window.addEventListener(
                     headers.append( `${rewritePrefix}Referer`, referer );
                 }
                 await DL.downloadFromHls(
-                    tab.title, data.url, { headers: headers },
+                    title, data.url, { headers: headers },
                     rewritePrefix.toLowerCase() );
             } else {
                 const anchor = document.createElement("a");
@@ -341,6 +354,7 @@ window.addEventListener(
                 {title: "Content-Type", field: "content_type", widthGrow:2},
                 {title: "kind", field: "kind", widthGrow:1},
                 {title: "size", field: "size", widthGrow:2},
+                {title: "try", field: "downloading", widthGrow:1, formatter:"tickCross"},
             ],
         });
 
