@@ -33,18 +33,6 @@ function dispRow( table, rowList, filterTabId ) {
     table.addData( work );
 }
 
-function url2filename( urltxt, contentType ) {
-    contentType = Def.normlizeContentType( contentType );
-    const url = new URL( urltxt );
-    let ext = Def.contentType2ext[ contentType ];
-    if ( ext ) {
-        ext = "." + ext;
-    } else {
-        ext = "";
-    }
-    return url.pathname.replace( /.*\/([^\/]+)$/,"$1" ) + ext;;    
-}
-
 async function updateKind( row ) {
     if ( row.kind == "etc" && row.content_type == "" ) {
         let newKind = row.kind;
@@ -177,7 +165,7 @@ function save( table ) {
 
     table.getData("active").forEach( ( row )=>{
         if ( row.dataList ) {
-            let name = `${DL.num2Str( 5, row.id )}_${url2filename( row.url, row.content_type )}`;
+            let name = `${DL.num2Str( 5, row.id )}_${DL.url2filename( row.url, row.content_type )}`;
             zip.file( name, new Blob( row.dataList ) );
         }
     });
@@ -189,6 +177,39 @@ function save( table ) {
         anchor.download = `${DL.getFilenameWithDate()}.zip`;
         anchor.click();
     });
+}
+
+async function downloadUrlOnTab( data, opt ) {
+    let name = DL.url2filename( data.url, data.content_type );
+    if ( data.dataList ) {
+        // データを取得済みの場合は、そのままダウンロード
+        let blob = new Blob( data.dataList );
+        const anchor = document.createElement("a");
+        anchor.href = URL.createObjectURL( blob );
+        anchor.download = name;
+        anchor.click();
+        return;
+    }
+
+    await DL.downloadFileInChunks(data.url, opt);
+}
+
+function makeReqHeaders( rewritePrefix, data ) {
+    const headers = new Headers();
+    normalizeHeader( data.reqHeader ).forEach( (header)=>{
+        headers.append( header[ "name" ], header[ "value" ] );
+    });
+
+    // origin を上書きさせる
+    let origin = getHeaderFor( data.reqHeader, "origin" );
+    if ( origin ) {
+        headers.append( `${rewritePrefix}Origin`, origin );
+    }
+    let referer = getHeaderFor( data.reqHeader, "referer" );
+    if ( referer ) {
+        headers.append( `${rewritePrefix}Referer`, referer );
+    }
+    return headers;
 }
 
 window.addEventListener(
@@ -243,35 +264,25 @@ window.addEventListener(
                 }
             }
             console.log( "download", data, hlsFlag );
-            if ( hlsFlag ) {
-                const headers = new Headers();
-                normalizeHeader( data.reqHeader ).forEach( (header)=>{
-                    headers.append( header[ "name" ], header[ "value" ] );
-                });
 
-                let rewritePrefix = `X-my-rewrite-${s_uuid}-`;
-                // origin を上書きさせる
-                let origin = getHeaderFor( data.reqHeader, "origin" );
-                if ( origin ) {
-                    headers.append( `${rewritePrefix}Origin`, origin );
-                }
-                let referer = getHeaderFor( data.reqHeader, "referer" );
-                if ( referer ) {
-                    headers.append( `${rewritePrefix}Referer`, referer );
-                }
+            let rewritePrefix = `X-my-rewrite-${s_uuid}-`;
+            const headers = makeReqHeaders( rewritePrefix, data );
+            let opt = { headers: headers };
+            if ( hlsFlag ) {
                 await DL.downloadFromHls(
-                    title, data.url, { headers: headers },
+                    title, data.url, opt,
                     rewritePrefix.toLowerCase() );
             } else {
-                const anchor = document.createElement("a");
-                if ( data.dataList ) {
-                    let blob = new Blob( data.dataList );
-                    anchor.href = URL.createObjectURL( blob );
-                } else {
-                    anchor.href = data.url;
-                }
-                anchor.download = url2filename( data.url, data.content_type );
-                anchor.click();
+                downloadUrlOnTab( data, opt );
+                // const anchor = document.createElement("a");
+                // if ( data.dataList ) {
+                //     let blob = new Blob( data.dataList );
+                //     anchor.href = URL.createObjectURL( blob );
+                // } else {
+                //     anchor.href = data.url;
+                // }
+                // anchor.download = DL.url2filename( data.url, data.content_type );
+                // anchor.click();
 
                 // android 版 firefox では downloads.download() が使えない 
                 // const opt = {};

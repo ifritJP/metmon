@@ -1,7 +1,20 @@
 import * as FS from "./fs.js";
+import * as Def from "./def.js";
 
 export function num2Str( fig, num ) {
     return num.toString(10).padStart( fig, '0' );
+}
+
+export function url2filename( urltxt, contentType ) {
+    contentType = Def.normlizeContentType( contentType );
+    const url = new URL( urltxt );
+    let ext = Def.contentType2ext[ contentType ];
+    if ( ext ) {
+        ext = "." + ext;
+    } else {
+        ext = "";
+    }
+    return url.pathname.replace( /.*\/([^\/]+)$/,"$1" ) + ext;;    
 }
 
 function joinUrl( srcURL, url ) {
@@ -138,27 +151,34 @@ function arrayBufferToHex(buffer) {
   return hexString.toUpperCase();
 }
 
-async function downloadAndJoin( urlList, opt, metaInfo, logFunc, progressFunc ) {
-    let date_txt = getFilenameWithDate();
-    console.log( date_txt );
 
-    async function saveAs( name, blob ) {
-        let workUrl = URL.createObjectURL( blob );
+async function saveAs( name, blob ) {
+    let workUrl = URL.createObjectURL( blob );
 
-        const anchor = document.createElement("a");
-        anchor.href = workUrl;
-        anchor.download = name;
-        anchor.click();
-        
-        //URL.revokeObjectURL( workUrl );
-    }
+    const anchor = document.createElement("a");
+    anchor.href = workUrl;
+    anchor.download = name;
+    anchor.click();
+    
+    //URL.revokeObjectURL( workUrl );
+}
 
-    const ext = ".bin";
+async function createTmpFile( name ) {
+    console.log( name );
 
 
     const dirObj = await FS.createDir( "downloads" );
-    const fileObj = await dirObj.createFile( `${date_txt}${ext}` );
+    const fileObj = await dirObj.createFile( name );
     const writer = await fileObj.getWritable();
+
+    return [ fileObj, writer ];
+}
+
+async function downloadAndJoin( urlList, opt, metaInfo, logFunc, progressFunc ) {
+    let date_txt = getFilenameWithDate();
+    const ext = ".bin";
+
+    const [ fileObj, writer ] = await createTmpFile( date_txt + ext );
 
 
     let cancelFlag = false;
@@ -197,7 +217,48 @@ async function downloadAndJoin( urlList, opt, metaInfo, logFunc, progressFunc ) 
         logFunc( "save" );
         await saveAs( `${date_txt}${ext}`, blob );
         await saveAs( `${date_txt}.json`, new Blob( [ JSON.stringify( metaInfo ) ] ) );
+    } else {
+        fileObj.remove();
     }
+
+    return fileObj;
+}
+
+function addProgress( title, progress_max, cancel_cb ) {
+    const div_el = document.getElementById( "progress" );
+
+    const dummy_el = document.createElement( "div" );
+    div_el.append( dummy_el );
+
+    let range_txt = `max="${progress_max}" value="0"`;
+    if (!progress_max) {
+        range_txt = "";
+    }
+    
+    dummy_el.innerHTML = `
+<input type="button" value="cancel" > <input type="button" value="remove tmp file" >
+<div>${title}</div>
+<input type="text" value="" style="width:100%;">
+<progress style="width:100%;" ${range_txt}>
+`;
+
+    const remove_el = dummy_el.querySelector( 'input[value="remove tmp file"]' );
+    remove_el.hidden = true;
+    
+    dummy_el.querySelector( 'input[value="cancel"]' ).addEventListener(
+        "click",
+        ()=>{
+            cancel_cb();
+            dummy_el.remove();
+            console.log( "click cancel" );
+        } );
+
+
+    let progress_text = dummy_el.querySelector( 'input[type="text"]');
+    let progress_el = dummy_el.querySelector( "progress" );
+
+    return [remove_el, dummy_el, progress_text, progress_el ];
+    
 }
 
 async function downloadFromHlsStream( title, url, opt, rewritePrefix ) {
@@ -239,37 +300,61 @@ async function downloadFromHlsStream( title, url, opt, rewritePrefix ) {
     });
     metaInfo.extInfo = extInfo;
 
-    const div_el = document.getElementById( "progress" );
-
-    const dummy_el = document.createElement( "div" );
-    div_el.append( dummy_el );
-    dummy_el.innerHTML = `
-<input type="button" value="cancel" >
-<div>${title}</div>
-<input type="text" value="" style="width:100%;">
-<progress style="width:100%;" max="${urlList.length}" value="0">
-
-`;
-
+    
     let cancelFlag = false;
-    dummy_el.querySelector( 'input[type="button"]' ).addEventListener(
-        "click",
-        ()=>{
-            cancelFlag = true;
-            console.log( "click cancel" );
-        } );
+    let [remove_el, dummy_el, progress_text, progress_el ] =
+        addProgress( title, urlList.length,
+                     ()=>{
+                         cancelFlag = true; 
+                     } );
+    
+//     const div_el = document.getElementById( "progress" );
 
-    await downloadAndJoin(
+//     const dummy_el = document.createElement( "div" );
+//     div_el.append( dummy_el );
+//     dummy_el.innerHTML = `
+// <input type="button" value="cancel" > <input type="button" value="remove tmp file" >
+// <div>${title}</div>
+// <input type="text" value="" style="width:100%;">
+// <progress style="width:100%;" max="${urlList.length}" value="0">
+
+// `;
+
+//     const remove_el = dummy_el.querySelector( 'input[value="remove tmp file"]' );
+//     remove_el.hidden = true;
+    
+//     let cancelFlag = false;
+//     dummy_el.querySelector( 'input[value="cancel"]' ).addEventListener(
+//         "click",
+//         ()=>{
+//             cancelFlag = true;
+//             dummy_el.remove();
+//             console.log( "click cancel" );
+//         } );
+
+    let fileObj = await downloadAndJoin(
         urlList, opt, metaInfo,
         (log)=>{
-            dummy_el.querySelector( 'input[type="text"]').value = log;
+            progress_text.value = log;
         },
         (progress)=>{
-            dummy_el.querySelector( "progress" ).value = progress;
+            progress_el.value = progress;
             return !cancelFlag;
         });
 
-    dummy_el.remove();
+    if ( !cancelFlag ) {
+        // ブラウザ側のダウンロード完了を検知できないので、手動で削除させる。
+        // extension の downloads を使うと検知できるが、
+        // downloads は android 版で利用できない。
+        remove_el.hidden = false;
+        remove_el.addEventListener(
+            "click",
+            ()=>{
+                console.log( "remove file" );
+                fileObj.remove();
+                dummy_el.remove();
+            } );
+    }
 }
 
 export function isDownloadingNow() {
@@ -358,5 +443,83 @@ export async function downloadFromHls( title, url, opt, rewritePrefix ) {
         selector_el.hidden = false;
     } else {
         await downloadFromHlsStream( title, url, opt, rewritePrefix );
+    }
+}
+
+
+// サーバーから大きいサイズのファイルをチャンクごとにダウンロードする関数
+export async function downloadFileInChunks( url, opt )
+{
+    try {
+        const response = await fetch(url, opt);
+
+        // ファイルの合計サイズを取得
+        const contentLength = response.headers.get('content-length');
+        console.log( "length:", contentLength );
+        
+
+        let date_txt = getFilenameWithDate();
+        const ext = ".bin";
+
+        const [ fileObj, writer ] = await createTmpFile( date_txt + ext );
+
+        // レスポンスボディのストリームリーダーを取得
+        const reader = response.body.getReader();
+
+
+
+        let cancelFlag = false;
+        let [remove_el, dummy_el, progress_text, progress_el ] =
+            addProgress( url, null,
+                         ()=>{
+                             cancelFlag = true; 
+                         } );
+        
+        let loaded = 0;
+        // ストリームからチャンクを読み込む
+        while (true) {
+            const { done, value } = await reader.read();
+
+            // ストリームの終わりに達した場合
+            if (done) {
+                break;
+            }
+            if (cancelFlag) {
+                break;
+            }
+
+            await writer.write( value );
+
+            // 読み込み済みのサイズを更新
+            loaded += value.length;
+
+            progress_text.value = `${loaded}`;
+        }
+        await writer.close();
+
+        if ( !cancelFlag ) {
+            progress_el.value = 100;
+            progress_el.max = 100;
+            
+            const contentType = response.headers.get('content-type');
+            saveAs( url2filename( url, contentType ), await fileObj.getBlob() );
+
+
+            // ブラウザ側のダウンロード完了を検知できないので、手動で削除させる。
+            // extension の downloads を使うと検知できるが、
+            // downloads は android 版で利用できない。
+            remove_el.hidden = false;
+            remove_el.addEventListener(
+                "click",
+                ()=>{
+                    console.log( "remove file" );
+                    fileObj.remove();
+                    dummy_el.remove();
+                } );
+        } else {
+            fileObj.remove();
+        }
+    } catch (error) {
+        console.error('ダウンロードエラー:', error);
     }
 }

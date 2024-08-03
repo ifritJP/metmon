@@ -22,7 +22,7 @@ export class DirObj {
     async createFile( filename ){
         let fileHandle =
             await this.dirHandle.getFileHandle( filename, { create: true });
-        return new FileObj( fileHandle );
+        return new FileObj( fileHandle, filename, this );
     }
 
     async lsdir( name ) {
@@ -30,11 +30,17 @@ export class DirObj {
             console.log( name, key, value );
         }
     }
+
+    async removeFile( filename ) {
+        await this.dirHandle.removeEntry( filename, { recursive: true } );
+    }
 }
 
 export class FileObj {
-    constructor( fileHandle ) {
+    constructor( fileHandle, filename, dirObj ) {
         this.fileHandle = fileHandle;
+        this.filename = filename;
+        this.dirObj = dirObj;
     }
     
     async getWritable() {
@@ -42,5 +48,8 @@ export class FileObj {
     }
     async getBlob() {
         return await this.fileHandle.getFile();
+    }
+    async remove() {
+        await this.dirObj.removeFile( this.filename );
     }
 }
