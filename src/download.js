@@ -500,22 +500,35 @@ export async function downloadFileInChunks( url, opt )
         if ( !cancelFlag ) {
             progress_el.value = 100;
             progress_el.max = 100;
+
+            function removeFile() {
+                console.log( "remove file" );
+                fileObj.remove();
+                dummy_el.remove();
+            }
             
             const contentType = response.headers.get('content-type');
-            saveAs( url2filename( url, contentType ), await fileObj.getBlob() );
+            let blob = await fileObj.getBlob();
+            if ( blob.size < 10 * 1024 * 1024 ) {
+                // ダウンロードしたサイズが小さい場合、
+                // メモリに読み込んでファイルは直ぐに消す
+                let buf = await blob.arrayBuffer();
+                saveAs( url2filename( url, contentType ), new Blob( [ buf ] ) );
+                removeFile();
+            } else {
+                saveAs( url2filename( url, contentType ), blob );
 
 
-            // ブラウザ側のダウンロード完了を検知できないので、手動で削除させる。
-            // extension の downloads を使うと検知できるが、
-            // downloads は android 版で利用できない。
-            remove_el.hidden = false;
-            remove_el.addEventListener(
-                "click",
-                ()=>{
-                    console.log( "remove file" );
-                    fileObj.remove();
-                    dummy_el.remove();
-                } );
+                // ブラウザ側のダウンロード完了を検知できないので、手動で削除させる。
+                // extension の downloads を使うと検知できるが、
+                // downloads は android 版で利用できない。
+                remove_el.hidden = false;
+                remove_el.addEventListener(
+                    "click",
+                    ()=>{
+                        removeFile();
+                    } );
+            }
         } else {
             fileObj.remove();
         }
