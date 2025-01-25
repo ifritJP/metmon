@@ -1,7 +1,7 @@
 {
     "manifest_version": 2,
     "name": "network monitor without devtools",
-    "version": "0.0.24",
+    "version": "0.0.25",
 
     "browser_specific_settings": {
 	"gecko": {

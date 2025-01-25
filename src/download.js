@@ -203,6 +203,7 @@ async function downloadAndJoin( urlList, opt, metaInfo, logFunc, progressFunc ) 
                     index++;
                     logFunc( `write a packet to the filesystem.  -- ${index}/${urlList.length}` );
                     await writer.write( url2blob.get( url ) );
+                    url2blob.delete( url );
                 } else {
                     break;
                 }
@@ -308,29 +309,6 @@ async function downloadFromHlsStream( title, url, opt, rewritePrefix ) {
                          cancelFlag = true; 
                      } );
     
-//     const div_el = document.getElementById( "progress" );
-
-//     const dummy_el = document.createElement( "div" );
-//     div_el.append( dummy_el );
-//     dummy_el.innerHTML = `
-// <input type="button" value="cancel" > <input type="button" value="remove tmp file" >
-// <div>${title}</div>
-// <input type="text" value="" style="width:100%;">
-// <progress style="width:100%;" max="${urlList.length}" value="0">
-
-// `;
-
-//     const remove_el = dummy_el.querySelector( 'input[value="remove tmp file"]' );
-//     remove_el.hidden = true;
-    
-//     let cancelFlag = false;
-//     dummy_el.querySelector( 'input[value="cancel"]' ).addEventListener(
-//         "click",
-//         ()=>{
-//             cancelFlag = true;
-//             dummy_el.remove();
-//             console.log( "click cancel" );
-//         } );
 
     let fileObj = await downloadAndJoin(
         urlList, opt, metaInfo,
